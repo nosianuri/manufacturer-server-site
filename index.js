@@ -19,6 +19,7 @@ async function run(){
         const serviceCollection = client.db('manufacturer_site').collection('parts');
         const orderCollection = client.db('manufacturer_site').collection('orders');
         const reviewCollection = client.db('manufacturer_site').collection('reviews');
+        const userCollection = client.db('manufacturer_site').collection('users');
 
         app.put('user/:email', async (req, res) => {
             const email = req.params.email;
@@ -40,18 +41,25 @@ async function run(){
             res.send(services);
         });
 
-        app.get('/available', async(req, res) =>{
-            const available = req.query.available;
-            const services = await serviceCollection.find().toArray();
-            const query = {available: available};
+        // app.get('/available', async(req, res) =>{
+        //     const available = req.query.available;
+        //     const services = await serviceCollection.find().toArray();
+        //     const query = {available: available};
+        //     const orders = await orderCollection.find(query).toArray();
+        //     services.forEach(service =>{
+        //         const serviceOrders = orders.filter(b => b.service === service.name);
+        //         const ordered = serviceOrders.map(s=> s.available);
+        //         const availables = service.available.filter(s=>!ordered.includes(s));
+        //         service.available = availables;
+        //     })
+        //     res.send(services);
+        // })
+
+        app.get('/order', async(req, res) =>{
+            const email = req.query.email;
+            const query = {email: email};
             const orders = await orderCollection.find(query).toArray();
-            services.forEach(service =>{
-                const serviceOrders = orders.filter(b => b.service === service.name);
-                const ordered = serviceOrders.map(s=> s.available);
-                const availables = service.available.filter(s=>!ordered.includes(s));
-                service.available = availables;
-            })
-            res.send(services);
+            res.send(orders);
         })
 
         app.post('/order', async(req, res) =>{
