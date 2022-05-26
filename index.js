@@ -31,13 +31,33 @@ async function run(){
             const result = await userCollection.updateOne(filter, updateDoc, options);
             const token = jwt.sign({email:email}, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
             res.send({result, token});
-        })
+        });
 
         app.get('/service', async(req, res) =>{
             const query = {};
             const cursor = serviceCollection.find(query);
             const services = await cursor.toArray();
             res.send(services);
+        });
+
+        app.get('/available', async(req, res) =>{
+            const available = req.query.available;
+            const services = await serviceCollection.find().toArray();
+            const query = {available: available};
+            const orders = await orderCollection.find(query).toArray();
+            services.forEach(service =>{
+                const serviceOrders = orders.filter(b => b.service === service.name);
+                const ordered = serviceOrders.map(s=> s.available);
+                const availables = service.available.filter(s=>!ordered.includes(s));
+                service.available = availables;
+            })
+            res.send(services);
+        })
+
+        app.post('/order', async(req, res) =>{
+            const order = req.body;
+            const result = await orderCollection.insertOne(order);
+            res.send(result);
         })
 
         app.get('/review', async(req, res) =>{
@@ -45,7 +65,7 @@ async function run(){
             const cursor = reviewCollection.find(query);
             const reviews = await cursor.toArray();
             res.send(reviews);
-        })
+        });
 
         app.post('/reviews', async (req, res) => {
             const newReview = req.body;
@@ -62,7 +82,8 @@ async function run(){
             const services = await cursor.toArray();
             console.log(keys);
             res.send(services);
-        })
+        });
+        
     }
     finally{
 
