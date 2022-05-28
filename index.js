@@ -3,6 +3,8 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
+const nodemailer = require('nodemailer');
+const mg = require('nodemailer-mailgun-transport');
 
 const port = process.env.PORT || 5000;
 const app = express();
@@ -29,6 +31,52 @@ function verifyJWT(req, res, next) {
     });
 }
 
+
+function sendOrderEmail(order){
+const {email, name, quantity} = order;
+
+    var Semail = {
+        from: process.env.EMAIL_SENDER,
+        to: email,
+        subject: `we have received your payment for ${name} is on ${price} at ${quantity} is Confirmed`,
+        text: `Your payment for this item ${name} is on ${price} at ${quantity} is Confirmed`,
+        html: `
+            <div>
+            <p> Hello ${displayName}, </p>
+            <h3>Thank you for your payment .</h3>
+            <h3>We have received your payment .</h3>
+            <p>Looking forward to seeing you on ${price} at ${quantity}.</p>
+            <h3>Our Address</h3>
+            <p>Andor Killa Bandorban</p>
+            <p>Bangladesh</p>
+            <a href="https://web.programming-hero.com/">unsubscribe</a>
+            </div>
+            `
+      };
+      nodemailerMailgun.sendMail(Semail, (err, info) =>{
+        if (err) {
+          console.log(`Error: ${err}`);
+        }
+        else {
+          console.log(`Response: ${info}`);
+        }
+      });
+    
+    
+}
+
+
+
+
+const auth = {
+    auth: {
+      api_key: process.env.EMAIL_SENDER_KEY,
+      domain: 'sandbox8cf7e39e8aed466d9702cf754e4247dd.mailgun.org'
+    },
+  };
+
+  const nodemailerMailgun = nodemailer.createTransport(mg(auth));
+
 async function run() {
     try {
         await client.connect();
@@ -36,10 +84,22 @@ async function run() {
         const orderCollection = client.db('manufacturer_site').collection('orders');
         const reviewCollection = client.db('manufacturer_site').collection('reviews');
         const userCollection = client.db('manufacturer_site').collection('users');
+        const itemCollection = client.db('manufacturer_site').collection('items');
+
+        const verifyAdmin = async(req, res, next) =>{
+            const requester = req.decoded.email;
+            const requesterAccount = await userCollection.findOne({email: requester});
+            if(requesterAccount.role === 'admin') {
+                next();
+            }
+            else{
+                res.status(403).send({message: 'forbidden'});
+            }
+        }
 
         app.get('/service', async (req, res) => {
             const query = {};
-            const cursor = serviceCollection.find(query);
+            const cursor = serviceCollection.find(query).project({name: 1});
             const services = await cursor.toArray();
             res.send(services);
         });
@@ -54,23 +114,23 @@ async function run() {
             const user = await userCollection.findOne({ email: email });
             const isAdmin = user.role === 'admin';
             res.send({ admin: isAdmin });
-          })
+          });
 
-        app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+        app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
             const email = req.params.email;
-            const requester = req.decoded.email;
-            const requesterAccount = await userCollection.findOne({email: requester});
-            if(requesterAccount.role === 'admin') {
+            // const requester = req.decoded.email;
+            // const requesterAccount = await userCollection.findOne({email: requester});
+            // if(requesterAccount.role === 'admin') {
                 const filter = { email: email };
                 const updateDoc = {
                     $set: {role:'admin'},
                 };
                 const result = await userCollection.updateOne(filter, updateDoc);  
                 res.send(result);
-            }
-            else{
-                res.status(403).send({message: 'forbidden'});
-            }
+            // }
+            // else{
+            //     res.status(403).send({message: 'forbidden'});
+            // }
         });
 
         app.put('/user/:email', async (req, res) => {
@@ -120,6 +180,25 @@ async function run() {
         app.post('/order', async (req, res) => {
             const order = req.body;
             const result = await orderCollection.insertOne(order);
+            sendOrderEmail(order);
+            res.send(result);
+        });
+        
+        app.get('/item',verifyJWT, verifyAdmin, async(req, res) =>{
+            const items = await itemCollection.find().toArray();
+            res.send(items);
+        })
+
+        app.post('/item', verifyJWT, verifyAdmin, async(req, res) =>{
+            const item = req.body;
+            const result = await itemCollection.insertOne(item);
+            res.send(result);
+        })
+
+        app.delete('/item/:email', verifyJWT, verifyAdmin, async(req, res) =>{
+            const email = req.params.email;
+            const filter = {email: email};
+            const result = await itemCollection.deleteOne(filter);
             res.send(result);
         })
 
@@ -147,6 +226,12 @@ async function run() {
             res.send(services);
         });
 
+        app.post("/email", async (req, res) =>{
+            const order = req.body;    
+            sendOrderEmail(order);
+            res.send({status: true});
+        });
+
     }
     finally {
 
@@ -154,7 +239,10 @@ async function run() {
 
 }
 
-run().catch(console.dir)
+
+
+
+run().catch(console.dir);
 
 app.get('/', (req, res) => {
     res.send('Hello From Subaru MF Manufacturer Site !');
