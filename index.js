@@ -36,7 +36,7 @@ function verifyJWT(req, res, next) {
 
 
 function sendOrderEmail(order){
-const {email, name, quantity} = order;
+const {displayName, email, name, price, quantity} = order;
 
     var Semail = {
         from: process.env.EMAIL_SENDER,
@@ -70,7 +70,7 @@ const {email, name, quantity} = order;
 
 
 function sendPaymentConfirmationEmail(order){
-const {email, displayName, name, price,  quantity} = order;
+const {email, displayName, name, price, quantity} = order;
 
     var Semail = {
         from: process.env.EMAIL_SENDER,
@@ -149,10 +149,11 @@ async function run() {
 
         app.get('/service', async (req, res) => {
             const query = {};
-            const cursor = serviceCollection.find(query).project({name: 1});
+            const cursor = serviceCollection.find(query);
             const services = await cursor.toArray();
             res.send(services);
         });
+        
 
         app.get('/admin', verifyJWT, async(req, res) => {
             const users = await userCollection.find().toArray();
@@ -287,6 +288,8 @@ async function run() {
             const result = await reviewCollection.insertOne(newReview);
             res.send(result);
         });
+
+        
 
         // use post to get services by ids
         app.post('/productByKeys', async (req, res) => {
