@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 const mg = require('nodemailer-mailgun-transport');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const port = process.env.PORT || 5000;
 const app = express();
@@ -32,8 +33,44 @@ function verifyJWT(req, res, next) {
 }
 
 
+
+
 function sendOrderEmail(order){
 const {email, name, quantity} = order;
+
+    var Semail = {
+        from: process.env.EMAIL_SENDER,
+        to: email,
+        subject: `we have received your payment for ${name} is on ${price} at ${quantity} is Confirmed`,
+        text: `Your payment for this item ${name} is on ${price} at ${quantity} is Confirmed`,
+        html: `
+            <div>
+            <p> Hello ${displayName}, </p>
+            <h3>Thank you for your payment .</h3>
+            <h3>We have received your payment .</h3>
+            <p>Looking forward to seeing you on ${price} at ${quantity}.</p>
+            <h3>Our Address</h3>
+            <p>Andor Killa Bandorban</p>
+            <p>Bangladesh</p>
+            <a href="https://web.programming-hero.com/">unsubscribe</a>
+            </div>
+            `
+      };
+      nodemailerMailgun.sendMail(Semail, (err, info) =>{
+        if (err) {
+          console.log(`Error: ${err}`);
+        }
+        else {
+          console.log(`Response: ${info}`);
+        }
+      });
+    
+    
+}
+
+
+function sendPaymentConfirmationEmail(order){
+const {email, displayName, name, price,  quantity} = order;
 
     var Semail = {
         from: process.env.EMAIL_SENDER,
@@ -85,6 +122,7 @@ async function run() {
         const reviewCollection = client.db('manufacturer_site').collection('reviews');
         const userCollection = client.db('manufacturer_site').collection('users');
         const itemCollection = client.db('manufacturer_site').collection('items');
+        const paymentCollection = client.db('manufacturer_site').collection('payments');
 
         const verifyAdmin = async(req, res, next) =>{
             const requester = req.decoded.email;
@@ -96,6 +134,18 @@ async function run() {
                 res.status(403).send({message: 'forbidden'});
             }
         }
+
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+            const service = req.body;
+            const price = service.price;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntent.create({
+              amount: amount,
+              currency: 'usd',
+              payment_method_types: ['card']
+            });
+            res.send({ clientSecret: paymentIntent.client_secret })
+          });
 
         app.get('/service', async (req, res) => {
             const query = {};
@@ -175,6 +225,13 @@ async function run() {
             else{
                 return res.status(403).send({message: 'forbidden access'});
             }
+        });
+
+        app.get('/order/:id', verifyJWT, async(req, res) =>{
+            const id = req.params.id;
+            const query = {id: ObjectId(id)};
+            const order = await orderCollection.findOne(query);
+            res.send(order);
         })
 
         app.post('/order', async (req, res) => {
@@ -183,6 +240,22 @@ async function run() {
             sendOrderEmail(order);
             res.send(result);
         });
+
+        app.patch('/order/:id', verifyJWT, async(req, res) =>{
+            const id = req.params.id;
+            const payment = req.body;
+            const filter = {_id: ObjectId(id)};
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId
+                }
+            }
+            const result = await paymentCollection.insertOne(payment);
+            const updatedOrder = await orderCollection.updateOne(filter, updatedDoc);
+            res.send(updatedDoc);
+
+        })
         
         app.get('/item',verifyJWT, verifyAdmin, async(req, res) =>{
             const items = await itemCollection.find().toArray();
